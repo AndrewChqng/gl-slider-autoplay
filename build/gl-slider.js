@@ -1036,146 +1036,166 @@
 	 */
 
 	class webglSlider {
-
-	    constructor(rootEl, options) {
-
-
-	        this.defaults = {
-	            effects: {
-	                filter: 'base',
-	                slide: 'base'
-	            },
-	            animationSpeed: 500,
-	            arrows: true,
-	            dots: false,
-	            autoplay: false,
-	            autoplaySpeed: 3000,
-	            preloader: true,
-	            startItem: 0,
-	            renderInView: false // render only when slider visible
-	        };
-	        this.html = {
-	            root: rootEl,
-	            canvas: null,
-	            preloader: null,
-	            arrows: null,
-	            dots: null
-	        };
-	        this.geometrySize = {
-	            x: 1,
-	            y: 1
-	        };
-	        this.items = [];
-	        this.variables = {
-	            progress: 0,
-	            time: 0,
-	            canvasSize: {
-	                width: 0,
-	                height: 0
-	            },
-	            canvasRatio: {
-	                width: 1,
-	                height: 1
-	            },
-	            texRatio0: {
-	                width: 1,
-	                height: 1
-	            },
-	            texRatio1: {
-	                width: 1,
-	                height: 1
-	            },
-	            mouse: {
-	                state: 'out',
-	                x: 0,
-	                y: 0
-	            }
-	        };
-	        this.options = mergeDeep(this.defaults, options);
-	        this.animate = {
-	            isActive: false,
-	            currTime: 0,
-	            totalTime: this.options.animationSpeed
-	        };
-	        this.onView = false;
-
-	        let self = this;  // save this context
-
-	        if (self.options.preloader) {
-	            self.html.preloader = createPreloader(self.html.root);
-	        }
-
-	        self.html.canvas = createCanvas(self.html.root);
-	        addHandlersCanvas(self.html.canvas, self.variables);
-
-	        self.gl = initGL(self.html.canvas);
-	        self.programInfo = initShaderProgram(
-	            self.gl,
-	            shaders.vertex.base(),
-	            combineFragmentShader(self.options.effects)
-	        );
-	        self.buffers = initBuffers(self.gl, self.geometrySize); // инициализируем плоскость
-
-	        self.loadItems(function () {
-	            self.sortItems();
-
-	            self.itemActive = self.options.startItem; // задаём начальный слайд
-	            self.generateArrow();
-	            self.generateDots();
-	            self.slide(0, 0, 1, 1); // инициализируем начальный слайд
-
-	            let then = 0;
-	            // Draw the scene repeatedly
-	            function render(now) {
-	                // now *= 0.001;  // convert to seconds
-
-	                if(self.onView){
-	                    let deltaTime = now - then;
-	                    then = now;
-
-	                    if(self.animate.isActive){
-	                        self.animate.currTime += deltaTime;
-	                        self.variables.progress = self.animate.currTime/self.animate.totalTime;
-	                    }
-
-	                    if( self.variables.progress >= 1 ){
-	                        self.variables.progress = 0;
-	                        self.animate.isActive = false;
-	                        self.changeImage(self.itemActive, self.itemActive, null);
-
-	                        if (self.options.dots) {
-	                            self.html.dots.querySelectorAll('button').forEach(element=>{
-	                                element.classList.remove('is-active');
-	                                if(parseInt(element.dataset.dotNumber) === self.itemActive ){
-	                                    element.classList.add('is-active');
-	                                }
-	                            });
-	                        }
-	                    }
-
-	                    drawScene(self.gl, self.items, self.itemActive, self.geometrySize, self.variables, self.programInfo, self.buffers, deltaTime);
-	                }
-	                requestAnimationFrame(render);
-	            }
-	            requestAnimationFrame(render);
-
-	            if (self.options.preloader) {
-	                removePreloader(self.html.preloader);
-	            }
-
-	            self.html.root.dataset.initialized = 'true';
-	        });
-
-
-	        if(self.options.renderInView){
-	            let observer = new IntersectionObserver(()=>{
-	                this.onView = !this.onView;
-	            }, { threshold: '0.05' });
-	            observer.observe(this.html.root);
-	        } else {
-	            this.onView = true;
-	        }
-	    }
+		constructor(rootEl, options) {
+			this.defaults = {
+				effects: {
+					filter: 'base',
+					slide: 'base'
+				},
+				animationSpeed: 500,
+				arrows: true,
+				dots: false,
+				autoplay: false,
+				autoplaySpeed: 3000,
+				preloader: true,
+				startItem: 0,
+				renderInView: false // render only when slider visible
+			};
+			this.html = {
+				root: rootEl,
+				canvas: null,
+				preloader: null,
+				arrows: null,
+				dots: null
+			};
+			this.geometrySize = {
+				x: 1,
+				y: 1
+			};
+			this.items = [];
+			this.variables = {
+				progress: 0,
+				time: 0,
+				canvasSize: {
+					width: 0,
+					height: 0
+				},
+				canvasRatio: {
+					width: 1,
+					height: 1
+				},
+				texRatio0: {
+					width: 1,
+					height: 1
+				},
+				texRatio1: {
+					width: 1,
+					height: 1
+				},
+				mouse: {
+					state: 'out',
+					x: 0,
+					y: 0
+				}
+			};
+			this.options = mergeDeep(this.defaults, options);
+			this.animate = {
+				isActive: false,
+				currTime: 0,
+				totalTime: this.options.animationSpeed
+			};
+			this.onView = false;
+			this.autoplayTimer = null; // Timer for autoplay
+	
+			let self = this;  // save this context
+	
+			if (self.options.preloader) {
+				self.html.preloader = createPreloader(self.html.root);
+			}
+	
+			self.html.canvas = createCanvas(self.html.root);
+			addHandlersCanvas(self.html.canvas, self.variables);
+	
+			self.gl = initGL(self.html.canvas);
+			self.programInfo = initShaderProgram(
+				self.gl,
+				shaders.vertex.base(),
+				combineFragmentShader(self.options.effects)
+			);
+			self.buffers = initBuffers(self.gl, self.geometrySize); // Initialize plane
+	
+			self.loadItems(function () {
+				self.sortItems();
+	
+				self.itemActive = self.options.startItem; // Set initial slide
+				self.generateArrow();
+				self.generateDots();
+				self.slide(0, 0, 1, 1); // Initialize first slide
+	
+				let then = 0;
+				// Draw the scene repeatedly
+				function render(now) {
+					if (self.onView) {
+						let deltaTime = now - then;
+						then = now;
+	
+						if (self.animate.isActive) {
+							self.animate.currTime += deltaTime;
+							self.variables.progress = self.animate.currTime / self.animate.totalTime;
+						}
+	
+						if (self.variables.progress >= 1) {
+							self.variables.progress = 0;
+							self.animate.isActive = false;
+							self.changeImage(self.itemActive, self.itemActive, null);
+	
+							if (self.options.dots) {
+								self.html.dots.querySelectorAll('button').forEach(element => {
+									element.classList.remove('is-active');
+									if (parseInt(element.dataset.dotNumber) === self.itemActive) {
+										element.classList.add('is-active');
+									}
+								});
+							}
+						}
+	
+						drawScene(self.gl, self.items, self.itemActive, self.geometrySize, self.variables, self.programInfo, self.buffers, deltaTime);
+					}
+					requestAnimationFrame(render);
+				}
+				requestAnimationFrame(render);
+	
+				if (self.options.preloader) {
+					removePreloader(self.html.preloader);
+				}
+	
+				self.html.root.dataset.initialized = 'true';
+	
+				// Start autoplay if enabled
+				if (self.options.autoplay) {
+					self.startAutoplay();
+				}
+			});
+	
+			if (self.options.renderInView) {
+				let observer = new IntersectionObserver(() => {
+					this.onView = !this.onView;
+					if (this.onView && this.options.autoplay) {
+						this.startAutoplay();
+					} else {
+						this.stopAutoplay();
+					}
+				}, { threshold: '0.05' });
+				observer.observe(this.html.root);
+			} else {
+				this.onView = true;
+			}
+		}
+	
+		startAutoplay() {
+			this.stopAutoplay(); // Clear existing timer if any
+			this.autoplayTimer = setInterval(() => {
+				this.slideNext();
+			}, this.options.autoplaySpeed);
+		}
+	
+		stopAutoplay() {
+			if (this.autoplayTimer) {
+				clearInterval(this.autoplayTimer);
+				this.autoplayTimer = null;
+			}
+		}
+	
 
 	    /**
 	     * Update plugin options and shader program
